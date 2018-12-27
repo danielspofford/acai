@@ -1,0 +1,86 @@
+#!/bin/bash
+
+set -e
+
+path=.
+author=$(git config user.name)
+
+while [ "$1" != "" ]; do
+  case $1 in
+    --help )
+      usage=$(cat <<- EOM
+      NAME
+        acai
+
+      DESCRIPTION
+        Outputs the name of every repo in a path whose author of their oldest
+        commit on master is not equal to a given author.
+
+      SYNOPSIS
+        acai [options]
+
+      OPTIONS
+        --help (boolean)
+          Prints this message.
+        --path (string)
+          Target directory to inspect repositories within. Defaults to the
+          calling directory.
+        --author (string)
+          Author to compare against, repositories whose first master commit does
+          not match this author will be returned. Defaults to the result of
+          \`git config user.name\`.
+        --verbose (boolean)
+          Includes repositories in the output whose author failed to resolve.
+      EOM
+      )
+      echo "$usage"
+      exit 0
+      ;;
+    --path )
+      shift
+      path=$1
+      ;;
+    --author )
+      shift
+      author=$1
+      ;;
+    --verbose )
+      verbose=true
+      ;;
+    * )
+      echo "Unsupported option: $1"
+      echo "The --help option may be passed for usage information."
+      exit 1
+  esac
+  shift
+done
+
+cd $path
+
+out=$(for d in */ ; do
+  cd $d
+
+  set +e
+  if ! [ -d .git ] || ! git rev-parse --git-dir > /dev/null 2>&1; then
+    set -e
+    cd ..
+    continue
+  fi
+
+  repo=$(basename $PWD)
+
+  object=$(git rev-list --all master 2> /dev/null | tail -1)
+
+  set +e
+  tempAuthor=$(git show -s --format=%an $object 2> /dev/null)
+  set -e
+
+  echo "$repo|$tempAuthor"
+  cd ..
+done)
+
+if [ $verbose ]; then
+  echo "$out" | awk -v author="$author" -F "|" '$2 != author {print $1}'
+else
+  echo "$out" | awk -v author="$author" -F "|" '$2 != author && $2 != "" {print $1}'
+fi
